@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+
+import os
+import re
+import sys
+import glob
+import string
+import functools
+
+from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio import AlignIO
+from Bio.Nexus import Nexus
+from Bio.SeqRecord import SeqRecord
+from Bio.AlignIO.PhylipIO import SequentialPhylipWriter, RelaxedPhylipWriter
+
+
+# define a new writer for relaxed-sequential phylip a-la `Nexus.export_phylip()`
+class RelaxedSequentialPhylipWriter(SequentialPhylipWriter):
+    """Relaxed Sequential Phylip format Writer."""
+
+    def write_alignment(self, alignment):
+        """Write a relaxed phylip alignment."""
+        # Check inputs
+        for name in (s.id.strip() for s in alignment):
+            if any(c in name for c in string.whitespace):
+                raise ValueError(f"Whitespace not allowed in identifier: {name}")
+
+        # Calculate a truncation length - maximum length of sequence ID plus a
+        # single character for padding
+        # If no sequences, set id_width to 1. super(...) call will raise a
+        # ValueError
+        if len(alignment) == 0:
+            id_width = 1
+        else:
+            id_width = max(len(s.id.strip()) for s in alignment) + 1
+        super().write_alignment(alignment, id_width)
+
+
+def usage():
+    msg = """concatenate genewise alignments in fasta format into single PHYLIP and NEXUS formatted alignments
+    Usage:
+    concat-aln <alignment-input-dir> <output-file-name> <DNA|protein>
+          """
+
+    print(msg)
+
+
+def get_all_possible_taxa(alns):
+    """return the sample space of all the taxa"""
+    taxa = set()
+    for aln in alns:
+        taxa.update({seq.id for seq in aln})
+    return taxa
+
+
+def pad_and_sort_aln(aln, all_taxa):
+    """Pad the alignment with missing chars for missing taxa"""
+    try:
+        ncol = len(aln[0])
+    except IndexError:
+        return (None, None)
+
+    pad_seqs = []
+    missing_taxa = all_taxa.difference({seq.id for seq in aln})
+    for taxon in missing_taxa:
+        pad_seq = SeqRecord(Seq("?" * ncol), id=taxon)
+        pad_seqs.append(pad_seq)
+
+    aln.extend(pad_seqs)
+    aln.sort()
+    return ncol, aln
+
+
+def get_partitions(aln_list):
+    """
+    get a dictionary of partition information in the format
+    {"gene_name": (start_pos, end_pos),
+    ...
+    }
+    -------
+    aln_list: list of tuples in the form ('gene_name', length_of_gene)
+    """
+    cur_pos = 1
+    partitions = []
+
+    for i in range(len(aln_list)):
+        gene_name, gene_len = aln_list[i]
+        gene_start = cur_pos
+        gene_end = cur_pos + gene_len - 1
+        partitions.append((gene_name, gene_start, gene_end))
+        cur_pos = gene_end + 1
+
+    return partitions
+
+
+def format_partitions_nexus(partitions):
+    """
+    string format the partitions list of tuples <[('gene1', start, end), ....]>
+    to nexus charset lines.
+    """
+
+    nexus_str = "begin sets;\n"
+    for partition in partitions:
+        this_entry = f"  charset {partition[0]} = {partition[1]}-{partition[2]};\n"
+        nexus_str += this_entry
+
+    nexus_str += "end;\n"
+
+    return nexus_str
+
+
+def process_all_alignments(alignment_output_dir):
+    all_genes = sorted(
+        [
+            x
+            for x in glob.glob(alignment_output_dir + "/*")
+            if (x.endswith(".fasta") or x.endswith(".fa"))
+        ]
+    )
+    all_alignments = {
+        os.path.splitext(os.path.basename(gene))[0]: AlignIO.read(gene, "fasta")
+        for gene in all_genes
+    }
+
+    return all_alignments
+
+
+def combine_alignments(alignment_dict):
+    all_taxa = get_all_possible_taxa([alignment_dict[k] for k in alignment_dict])
+    iteron_dict = {
+        k: pad_and_sort_aln(alignment_dict[k], all_taxa) for k in alignment_dict
+    }
+    iteron_lens = [(k, iteron_dict[k][0]) for k in iteron_dict if iteron_dict[k][0]]
+    iteron = [iteron_dict[k][1] for k in iteron_dict if iteron_dict[k][1]]
+    combined = functools.reduce(lambda x, y: x + y, iteron)
+    partitions = get_partitions(iteron_lens)
+    return (partitions, combined)
+
+
+def main():
+    try:
+        input_dir = sys.argv[1]
+        output_name = sys.argv[2]
+        input_type = sys.argv[3]
+    except IndexError:
+        usage()
+        sys.exit()
+
+    if input_dir in ("-h", "--help"):
+        usage()
+        sys.exit()
+
+    all_alignments = process_all_alignments(input_dir)
+    partitions, combined = combine_alignments(all_alignments)
+    [seq.annotations.update({"molecule_type": input_type}) for seq in combined]
+    partitions_str = format_partitions_nexus(partitions)
+
+    with open(output_name + ".phy", "w") as phylip_file:
+        RelaxedSequentialPhylipWriter(phylip_file).write_alignment(combined)
+
+    with open(output_name + ".nex", "w") as nexus_file:
+        nexus_file.write(partitions_str)
+
+    print(
+        f"wrote concatenated alignment from directory {input_dir} to file {output_name}.phy and the partition information to {output_name}.nex"
+    )
+
+    return 0
+
+
+if __name__ == "__main__":
+    main()
