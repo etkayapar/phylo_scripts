@@ -1,15 +1,17 @@
 #!/usr/bin/env awk -f
 
 ## Remove entries with empty sequences from a fasta formatted file.
-## Expects the file to be in the "fasta-2line" format: sequences
-## cannot span multiple lines. If this is not the case, pass your
-## file through unwrapFasta.awk before.
+## Can handle both wrapped and unwrapped fasta files.
 
 BEGIN {
 	RS=">"
 	FS="\n"
+	OFS=""
 }
 {
-	if ($2 != "")
-		print ">"$1"\n"$2
+	if ($2 != ""){
+		header=$1
+		$1=""
+		print ">"header"\n"$0
+	}
 }
