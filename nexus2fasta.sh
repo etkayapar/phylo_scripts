@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-### Quick and dirty conversion of nexus formatted alignments to plain fasta. Works with gnu sed and grep
-### haven't tested it with BSD versions
+### Quick and dirty conversion of nexus formatted alignments to plain fasta.
+### Looks super ugly so that works with both GNU and BSD sed and grep :))
 
 inseq=$1
 
