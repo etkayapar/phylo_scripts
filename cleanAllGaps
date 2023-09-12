@@ -1,0 +1,36 @@
+#!/usr/bin/awk -f
+
+## Remove entries from a FASTA formatted file (ideally an MSA)
+## if there are >= <p> missing or gap characters. P being the
+## proportional length. If the argument p is not set, it
+## to p=1, meaning a sequence must be all gaps/missing for the
+## entry to be filtered out. It does not filter out if entries
+## are empty i.e a header followed by an empty line, or a header
+## followed by the next header.
+## -----------------------------------------------------------
+## Example usage:
+## 1) $ cat file.fasta | cleanAllGaps -v p=0.8
+## 2) $ cleanAllGaps -v p=0.8 file.fasta
+
+BEGIN{
+	RS=">"
+	FS="\n"
+	OFS=""
+	if(p == ""){
+		p = 1
+	}
+}
+{
+	header=$1
+	$1=""
+	s=$0
+	if(length($0) == 0){
+		if(length(header) > 0){
+			print ">"header"\n"$0
+		}
+		next
+	}
+	n_deleted = gsub(/-|\?/,"", s)
+	prop_deleted = n_deleted / length($0)
+	if(prop_deleted < p) print ">"header"\n"$0
+}
