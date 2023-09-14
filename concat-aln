@@ -100,9 +100,10 @@ def format_partitions_nexus(partitions):
     to nexus charset lines.
     """
 
-    nexus_str = "begin sets;\n"
+    nexus_str = "#NEXUS\n" ##IQTREE expects this
+    nexus_str += "begin sets;\n"
     for partition in partitions:
-        this_entry = f"  charset {partition[0]} = {partition[1]}-{partition[2]};\n"
+        this_entry = f"charset {partition[0]} = {partition[1]}-{partition[2]};\n"
         nexus_str += this_entry
 
     nexus_str += "end;\n"
