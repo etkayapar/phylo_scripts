@@ -1,4 +1,4 @@
-#!/usr/bin/env awk -f
+#!/usr/bin/awk -f
 
 ## Ignore the third codon position from all partitions.
 ##
