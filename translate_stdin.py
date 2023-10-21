@@ -7,9 +7,13 @@ Roughly equivalent to running transeq from the EMBOSS suite as::
     cat alignment.fa | transeq -filter -frame 1
 """
 
-from sys import stdin
+from sys import stdin,argv
 from Bio.Seq import Seq
 
+if len(argv) > 1:
+    table = argv[1]
+else:
+    table="1"
 
 for l in stdin:
     l = l.strip()
@@ -17,5 +21,5 @@ for l in stdin:
         print(l)
         continue
     s = Seq(l)
-    p = str(s.translate())
+    p = str(s.translate(table=table))
     print(p)
