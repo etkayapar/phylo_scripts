@@ -30,7 +30,7 @@ BEGIN{
 		}
 		next
 	}
-	n_deleted = gsub(/-|\?/,"", s)
+	n_deleted = gsub(/-|\?|N/,"", s)
 	prop_deleted = n_deleted / length($0)
 	if(prop_deleted < p) print ">"header"\n"$0
 }
