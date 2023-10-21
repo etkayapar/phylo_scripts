@@ -1,4 +1,4 @@
-#!/usr/bin/env awk -f
+#!/usr/bin/awk -f
 
 ## Remove entries with empty sequences from a fasta formatted file.
 ## Can handle both wrapped and unwrapped fasta files.

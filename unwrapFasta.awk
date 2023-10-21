@@ -1,4 +1,4 @@
-#!/usr/bin/env awk -f
+#!/usr/bin/awk -f
 
 ## Unwraps fasta sequences
 ## Directly taken from [1] all credits goes to the authors.
