@@ -63,7 +63,7 @@ $0 ~ /charpartition/, $0 ~ /^end/ {
 	modellen = length(model)
 	modelclass = model[1]
 	if (modelclass in iq_to_rax){
-		modelclass = iq_to_rax[modelclass]
+		model[1] = iq_to_rax[modelclass]
 	}
 	modelstring = join(model, 1, modellen, "+")
 	gsub(/\+I\+I/, "+I", modelstring) ## Remove double +I s due to IQ-TREE bug
