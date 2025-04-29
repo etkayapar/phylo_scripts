@@ -15,7 +15,10 @@ folder name under which your results will be.
 """
 import os
 import glob
+import tarfile
+import shutil
 from sys import argv
+from multiprocessing import Pool
 
 
 def detect_busco_mode(startdir):
@@ -107,54 +110,80 @@ def process_all_samples(samples_list, base_dir, busco_dataset, min_tax_percent=9
 
     return buscos_to_keep
 
-def parse_fasta_dirty(fname, sample_name):
+def parse_fasta_dirty(fname, sample_name, tarfile=False):
     '''
+    handles both file_paths or already opened file objects
     we are counting on the fact that each FASTA file will only have a single
     FASTA entry in it. no need for fancy checks (for now)
     '''
     
     header=f">{sample_name}"
     seq = []
-    with open(fname, "r") as f:
+    if tarfile:
+        f = fname
+        for l in f:
+            l = l.decode()
+            if l.startswith(">"):
+                continue
+            seq.append(l.strip())
+    else:
+        f = open(fname, "r")
         for l in f:
             if l.startswith(">"):
                 continue
             seq.append(l.strip())
+
+
     seq = "".join(seq)
     seq = "\n".join([header, seq])
 
+    if not tarfile:
+        f.close()
+
     return seq
 
-def collect_busco_seq(busco, samples_list, base_dir, busco_dataset):
-    busco_dataset = f"run_{busco_dataset}_odb10"
-    fna_list = list()
-    faa_list = list()
+def collect_buscos_all_samples(busco_list, samples_list, base_dir, busco_dataset):
+    busco_dataset=f"run_{busco_dataset}_odb10"
+    cleanupafter = False
+    busco_dict = {busco: {'fna': list(), 'faa': list()} for busco in busco_list}
 
     for sample in samples_list:
-        base_name = os.path.join(base_dir, sample, busco_dataset,
-                                 'busco_sequences', 'single_copy_busco_sequences')
-        fna_fname = os.path.join(base_name, busco+".fna")
-        faa_fname = os.path.join(base_name, busco+".faa")
-        if not os.path.exists(fna_fname):
-            continue
-        fna_list.append(parse_fasta_dirty(fna_fname, sample))
-        faa_list.append(parse_fasta_dirty(faa_fname, sample))
+        base_name = os.path.join(base_dir, sample, busco_dataset, 'busco_sequences', 'single_copy_busco_sequences')
+        targz_path = base_name+".tar.gz"
+        if not os.path.isdir(base_name) and os.path.exists(targz_path):
+            cleanupafter = True
+            print(f"extracting {sample}")
+            with tarfile.open(targz_path) as tf:
+                tf.extractall(path=os.path.dirname(base_name))
 
-    fna_seq = "\n".join(fna_list)
-    faa_seq = "\n".join(faa_list)
+        for busco in busco_list:
+            fna_fname = os.path.join(base_name, busco+".fna")
+            faa_fname = os.path.join(base_name, busco+".faa")
+            if not os.path.exists(fna_fname):
+                continue
+            busco_dict[busco]['fna'].append(parse_fasta_dirty(fna_fname, sample))
+            busco_dict[busco]['faa'].append(parse_fasta_dirty(faa_fname, sample))
 
-    return (fna_seq, faa_seq)
+        if cleanupafter == True:
+            print(f"remove extracted {sample}")
+            shutil.rmtree(base_name)
 
+    return busco_dict
+
+
+def collect_and_write_busco(busco, busco_seqs, samples_list, base_dir, busco_dataset, output_dir):
+    this_busco_fna, this_busco_faa = ["\n".join(x) for x in (busco_seqs[busco]['fna'], busco_seqs[busco]['faa'])]
+    with open(os.path.join(output_dir, busco+".fa"), "w") as f:
+        f.write(this_busco_fna+"\n")
+    with open(os.path.join(output_dir, busco+".faa"), "w") as f:
+        f.write(this_busco_faa+"\n")
 
 def collect_and_write_all_buscos(busco_list, samples_list, base_dir, busco_dataset, output_dir):
     os.mkdir(output_dir)
-    for busco in busco_list:
-        this_busco_fna, this_busco_faa = collect_busco_seq(busco, samples_list,
-                                                            base_dir, busco_dataset)
-        with open(os.path.join(output_dir, busco+".fa"), "w") as f:
-            f.write(this_busco_fna+"\n")
-        with open(os.path.join(output_dir, busco+".faa"), "w") as f:
-            f.write(this_busco_faa+"\n")
+    busco_seqs = collect_buscos_all_samples(busco_list, samples_list, base_dir, busco_dataset)
+    iteron_list = [[x, busco_seqs, samples_list, base_dir, busco_dataset, output_dir] for x in busco_list]
+    with Pool(16) as p:
+        p.starmap(collect_and_write_busco, iteron_list)
 
 def main():
     BUSCO_DATASET = "lepidoptera"
